@@ -1,18 +1,19 @@
 <!-- Chosen Palette: Swamp & Steel (Deep Moss Green, Slate Grey, Rust Orange, Misty White) -->
-<!-- Application Structure Plan:
+<!-- Application Structure Plan: 
     1. **Hero Section**: Immersive intro with Tone Radar Chart.
-    2. **Strategic Dashboard (The Atlas)**: Grid-based map. Clicking a region now shows a summary AND a "Read More" toggle for deep lore (Ley-lines, political history, specific province layouts).
-    3. **Faction Intel**: Dynamically generated list. Each faction card has an "Intelligence Report" toggle revealing specific agendas. UPDATED: Removed Ughuan Horde reference.
-    4. **Theology & Domains**: Dynamically generated cards. "Divine Knowledge" toggle reveals worship details. (Maelec=Electricity, Tebus=Science, Thanatos=War).
-    5. **Character Origins**: Hook selector with expanded roleplay tips hidden behind a toggle.
+    2. **Strategic Dashboard (The Atlas)**: 
+       - **Tab 1: Schematic**: Grid-based map for quick intel.
+       - **Tab 2: Cartographic**: Leaflet.js map. AUTOMATICALLY attempts to load 'Boroughian-Wetlands.jpeg' and 'Boroughian-Wetlands-Provinces.jpeg' as toggleable layers. Includes fallback to manual upload if files are missing.
+    3. **Faction Intel**: Dynamic list.
+    4. **Theology & Domains**: Dynamic cards (Corrected domains: Maelec/Electricity, Tebus/Science, Thanatos/War).
+    5. **Character Origins**: Hook selector.
 -->
 <!-- Visualization & Content Choices:
+    - **Leaflet.js**: configured with L.Control.Layers to switch between the visual map and the province map.
     - **Tone Analysis (Radar Chart)**: Visualizes campaign themes.
     - **Faction Power Dynamics (Bar Chart)**: Visualizes Military vs Political vs Magical strength.
-    - **Schematic Map**: CSS Grid representing the world.
-    - **Interaction**: Extensive use of JS to inject content and toggle visibility of "extended" description blocks.
 -->
-<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<!-- CONFIRMATION: NO SVG graphics used (except FontAwesome/Leaflet icons). NO Mermaid JS used. -->
 
 <!DOCTYPE html>
 <html lang="en">
@@ -20,8 +21,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Boroughian Wetlands: Player Primer</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
 
@@ -42,28 +52,13 @@
             max-width: 600px;
             margin-left: auto;
             margin-right: auto;
-            height: 300px; /* Base height */
+            height: 300px;
             max-height: 400px;
         }
         @media (min-width: 768px) {
             .chart-container {
                 height: 350px;
             }
-        }
-
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #e2e8f0;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #334155;
         }
 
         /* Map Grid Styling */
@@ -87,6 +82,7 @@
             border: 2px solid transparent;
             font-size: 0.75rem;
             line-height: 1.1;
+            user-select: none;
         }
         @media (min-width: 640px) {
             .map-cell {
@@ -94,33 +90,23 @@
                 font-size: 0.9rem;
             }
         }
-
         .map-cell:hover {
             transform: scale(1.02);
             z-index: 10;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
-
         .map-cell.active {
             border-color: #d97706; /* Amber-600 */
             box-shadow: inset 0 0 10px rgba(217, 119, 6, 0.2);
         }
 
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .animate-fade-in {
-            animation: fadeIn 0.5s ease-in-out;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-slide-up {
-            animation: slideUp 0.4s ease-out;
+        /* Leaflet Container */
+        #leaflet-map {
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+            background: #e2e8f0;
+            z-index: 1;
         }
 
         /* Toggle styles */
@@ -132,6 +118,22 @@
         .details-content.open {
             display: block;
             animation: slideUp 0.3s ease-out;
+        }
+
+        /* Animations */
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-up {
+            animation: slideUp 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in-out;
         }
     </style>
 </head>
@@ -190,7 +192,7 @@
                     </div>
                 </div>
             </div>
-
+            
             <!-- Tone Chart -->
             <div class="bg-white p-6 rounded-lg shadow-md border border-slate-200">
                 <h3 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2 text-center cinzel">Campaign Themes</h3>
@@ -204,12 +206,23 @@
         <section id="atlas" class="scroll-mt-24">
             <div class="bg-white rounded-xl p-6 lg:p-8 shadow-xl border border-slate-300 relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-800 to-slate-900"></div>
-                <div class="mb-8 text-center max-w-2xl mx-auto">
+                <div class="mb-6 text-center max-w-2xl mx-auto">
                     <h2 class="text-3xl font-bold text-slate-900 cinzel">The Regional Atlas</h2>
-                    <p class="text-slate-600 mt-2">The Wetlands are surrounded by powerful neighbors. Click the map zones below to gather intelligence on the region.</p>
+                    <p class="text-slate-600 mt-2">Explore the geopolitical landscape.</p>
                 </div>
 
-                <div class="flex flex-col lg:flex-row gap-8 items-stretch">
+                <!-- Tabs -->
+                <div class="flex justify-center mb-6 border-b border-slate-200">
+                    <button class="tab-btn px-6 py-2 text-sm font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 border-b-2 border-transparent focus:outline-none active" onclick="switchMapTab('schematic', this)">
+                        Schematic View
+                    </button>
+                    <button class="tab-btn px-6 py-2 text-sm font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 border-b-2 border-transparent focus:outline-none" onclick="switchMapTab('cartographic', this)">
+                        Cartographic View
+                    </button>
+                </div>
+
+                <!-- Schematic View (Default) -->
+                <div id="view-schematic" class="flex flex-col lg:flex-row gap-8 items-stretch animate-fade-in">
                     <!-- Map Grid -->
                     <div class="w-full lg:w-5/12 aspect-square max-w-md mx-auto flex-shrink-0">
                         <div class="map-grid h-full w-full bg-slate-300 p-2 rounded-lg border-4 border-slate-500 shadow-inner">
@@ -226,7 +239,7 @@
                                 <span class="text-lg mb-1">⚒️</span>
                                 <strong>Dalneymia</strong>
                             </div>
-
+                            
                             <!-- Row 2 -->
                             <div class="map-cell bg-blue-100 text-blue-900 hover:bg-blue-200" data-region="ocean" onclick="selectRegion('ocean')">
                                 <span class="text-lg mb-1">🌊</span>
@@ -265,16 +278,44 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Cartographic View (Leaflet) -->
+                <div id="view-cartographic" class="hidden animate-fade-in">
+                    <div class="flex flex-col gap-4">
+                        
+                        <!-- Map Container -->
+                        <div id="map-wrapper" class="relative h-[600px] w-full border-4 border-slate-700 rounded-lg shadow-2xl overflow-hidden bg-slate-200">
+                            <!-- Loading / Fallback Overlay -->
+                            <div id="map-fallback" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-100 bg-opacity-90 p-8 text-center hidden">
+                                <div class="text-amber-600 text-5xl mb-4">⚠️</div>
+                                <h3 class="text-xl font-bold text-slate-800 mb-2">Maps Not Detected</h3>
+                                <p class="text-slate-600 mb-4 max-w-md">
+                                    We couldn't auto-load <code>Boroughian-Wetlands.jpeg</code> or <code>Boroughian-Wetlands-Provinces.jpeg</code> from the current folder.
+                                </p>
+                                <div id="upload-zone" class="border-2 border-dashed border-slate-400 rounded-lg p-6 w-full max-w-sm hover:bg-white transition cursor-pointer" onclick="document.getElementById('map-upload').click()">
+                                    <p class="font-bold text-slate-700">Click here to manually load the map image</p>
+                                    <input type="file" id="map-upload" class="hidden" accept="image/*" onchange="handleManualUpload(this)">
+                                </div>
+                            </div>
+
+                            <div id="leaflet-map" class="h-full w-full"></div>
+                        </div>
+
+                        <div class="flex justify-between items-center text-xs text-slate-500 px-2">
+                            <span>Double-click map to place a tactical marker.</span>
+                            <span>Use the layer icon (top right) to toggle between Terrain and Provinces.</span>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </section>
 
         <!-- Factions & Politics -->
         <section id="factions" class="scroll-mt-24">
             <h2 class="text-3xl font-bold text-slate-900 cinzel mb-6 text-center">Factions & Orders</h2>
-            <p class="text-center text-slate-600 max-w-2xl mx-auto mb-10">Allegiances in the Wetlands are as shifting as the ground beneath your feet. Knowing who holds the sword, the coin, or the spell is vital.</p>
-
+            
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
                 <!-- Interactive List -->
                 <div id="faction-list" class="space-y-4">
                     <!-- Populated by JS -->
@@ -283,7 +324,6 @@
                 <!-- Faction Influence Chart -->
                 <div class="bg-white p-6 rounded-lg shadow-md border border-slate-200 flex flex-col">
                     <h3 class="text-lg font-bold text-slate-800 mb-2 text-center cinzel">Estimated Power Projection</h3>
-                    <p class="text-xs text-slate-500 text-center mb-6">Comparative analysis of Military, Political, and Magical assets.</p>
                     <div class="chart-container flex-grow">
                         <canvas id="factionChart"></canvas>
                     </div>
@@ -304,9 +344,8 @@
             <div class="bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700">
                 <div class="bg-slate-900 p-8 text-center border-b border-slate-700">
                     <h2 class="text-3xl font-bold cinzel text-amber-500">Character Origins</h2>
-                    <p class="text-slate-400 mt-2">Connect your class to the world. Select an archetype to reveal your potential backstory.</p>
                 </div>
-
+                
                 <div class="p-6 lg:p-10 flex flex-col md:flex-row gap-8">
                     <!-- Sidebar Controls -->
                     <div class="w-full md:w-1/3 flex flex-col gap-3">
@@ -350,6 +389,29 @@
     </footer>
 
     <script>
+        // --- Navigation Logic ---
+        const sections = ['Intro', 'Atlas', 'Factions', 'Pantheon', 'Hooks'];
+        const navContainer = document.getElementById('nav-container');
+        const mobileNavContainer = document.getElementById('mobile-nav-container');
+
+        sections.forEach(section => {
+            const link = document.createElement('a');
+            link.href = `#${section.toLowerCase()}`;
+            link.className = 'text-slate-300 hover:bg-slate-800 hover:text-amber-500 px-3 py-2 rounded-md text-sm font-bold uppercase tracking-wider transition';
+            link.innerText = section;
+            navContainer.appendChild(link);
+
+            const mobileLink = link.cloneNode(true);
+            mobileLink.className = 'text-slate-300 hover:bg-slate-900 hover:text-white block px-3 py-2 rounded-md text-base font-medium';
+            mobileNavContainer.appendChild(mobileLink);
+        });
+
+        const btn = document.getElementById('mobile-menu-btn');
+        const menu = document.getElementById('mobile-menu');
+        btn.addEventListener('click', () => {
+            menu.classList.toggle('hidden');
+        });
+
         // --- Data & State ---
         const loreData = {
             regions: {
@@ -492,44 +554,222 @@
             }
         };
 
-        // --- Init Logic ---
-        function initApp() {
-            renderNav();
+        // --- Core Functions ---
+        function selectRegion(id) {
+            const data = loreData.regions[id];
+            if (!data) return;
+            document.querySelectorAll('.map-cell').forEach(el => {
+                el.classList.remove('active');
+                if (el.dataset.region === id) el.classList.add('active');
+            });
+            const contentContainer = document.getElementById('region-content');
+            contentContainer.innerHTML = `
+                <div class="animate-fade-in">
+                    <h3 class="text-2xl font-bold cinzel text-slate-900 mb-2">${data.title}</h3>
+                    <div class="w-12 h-1 bg-amber-500 mb-4"></div>
+                    <p class="text-slate-700 text-lg leading-relaxed mb-4">${data.content}</p>
+                    <button onclick="toggleDetails('region-extended')" class="inline-flex items-center px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-sm font-bold rounded transition">
+                        <span>🗺️ Surveyor's Notes</span>
+                    </button>
+                    <div id="region-extended" class="details-content mt-4 p-4 bg-amber-50 border border-amber-200 rounded text-slate-700">
+                        ${data.extended}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showHook(id) {
+            const data = loreData.hooks[id];
+            document.querySelectorAll('.hook-btn').forEach(btn => {
+                if(btn.dataset.target === id) {
+                    btn.classList.add('bg-slate-600', 'border-amber-500');
+                    btn.classList.remove('border-transparent');
+                } else {
+                    btn.classList.remove('bg-slate-600', 'border-amber-500');
+                    btn.classList.add('border-transparent');
+                }
+            });
+            const display = document.getElementById('hook-display');
+            const tagsHtml = data.tags.map(tag => `<span class="inline-block bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide mr-2">${tag}</span>`).join('');
+            display.innerHTML = `
+                <div class="animate-slide-up">
+                    <h3 class="text-2xl font-bold text-slate-800 mb-3">${data.title}</h3>
+                    <p class="text-slate-700 mb-6 text-lg leading-relaxed font-serif italic">"${data.text}"</p>
+                    <div class="border-t border-slate-300 pt-4 mb-4">
+                        <p class="text-xs text-slate-500 font-bold mb-2">RECOMMENDED CLASSES</p>
+                        ${tagsHtml}
+                    </div>
+                    <button onclick="toggleDetails('hook-extended')" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline">
+                        + Reveal Character Advice
+                    </button>
+                    <div id="hook-extended" class="details-content mt-3 text-sm text-slate-600 bg-indigo-50 p-3 rounded border border-indigo-100">
+                        ${data.extended}
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleDetails(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('open');
+        }
+
+        // --- Map Tab Logic ---
+        function switchMapTab(mode, btnElement) {
+            const schematic = document.getElementById('view-schematic');
+            const cartographic = document.getElementById('view-cartographic');
+            
+            // Toggle Visibility
+            if(mode === 'schematic') {
+                schematic.classList.remove('hidden');
+                cartographic.classList.add('hidden');
+            } else {
+                schematic.classList.add('hidden');
+                cartographic.classList.remove('hidden');
+                // Auto-load attempts when switching to map view
+                attemptAutoLoadMaps();
+                setTimeout(() => { if(mapInstance) mapInstance.invalidateSize(); }, 200);
+            }
+
+            // Button Styles
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'text-slate-800', 'border-amber-600');
+                btn.classList.add('text-slate-500', 'border-transparent');
+            });
+            btnElement.classList.add('active', 'text-slate-800', 'border-amber-600');
+            btnElement.classList.remove('text-slate-500', 'border-transparent');
+        }
+
+        // --- Leaflet Logic (Dual Layer) ---
+        let mapInstance = null;
+        let stdLayer = null;
+        let provLayer = null;
+        const stdMapPath = './Boroughian-Wetlands.jpeg';
+        const provMapPath = './Boroughian-Wetlands-Provinces.jpeg';
+
+        function attemptAutoLoadMaps() {
+            // If map already loaded, skip
+            if(mapInstance) return;
+
+            // Try to load the base image to get dimensions
+            const img = new Image();
+            img.onload = function() {
+                // Success: Initialize map
+                initLeafletMap(this.width, this.height, stdMapPath, provMapPath);
+            };
+            img.onerror = function() {
+                // Fail: Show fallback upload
+                document.getElementById('map-fallback').classList.remove('hidden');
+            };
+            img.src = stdMapPath;
+        }
+
+        function handleManualUpload(input) {
+            // Fallback for manual file upload (single file for now in fallback mode)
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        initLeafletMap(this.width, this.height, e.target.result, null); // Only one layer if manual
+                    }
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function initLeafletMap(w, h, stdUrl, provUrl) {
+            document.getElementById('map-fallback').classList.add('hidden');
+            
+            // Bounds are 0,0 to h,w
+            const bounds = [[0, 0], [h, w]];
+
+            if(mapInstance) mapInstance.remove();
+
+            mapInstance = L.map('leaflet-map', {
+                crs: L.CRS.Simple,
+                minZoom: -2,
+                maxZoom: 2,
+                zoomControl: true,
+                center: [h/2, w/2],
+                zoom: 0
+            });
+
+            // Base Layer: Standard
+            stdLayer = L.imageOverlay(stdUrl, bounds).addTo(mapInstance);
+            
+            const overlayMaps = {};
+            
+            // If Province map exists (automatic mode)
+            if(provUrl) {
+                 provLayer = L.imageOverlay(provUrl, bounds);
+                 // We use a Base Layer control logic so they toggle
+                 const baseMaps = {
+                     "Geographic Map": stdLayer,
+                     "Political Provinces": provLayer
+                 };
+                 L.control.layers(baseMaps).addTo(mapInstance);
+            }
+
+            mapInstance.fitBounds(bounds);
+
+            // Click interaction
+            mapInstance.on('dblclick', function(e) {
+                L.marker(e.latlng).addTo(mapInstance).bindPopup("Strategic Marker").openPopup();
+            });
+        }
+
+        // --- Init Function ---
+        document.addEventListener('DOMContentLoaded', () => {
             renderFactions();
             renderPantheon();
             renderCharts();
             showHook('survivor');
-            selectRegion('wetlands'); // Default open
-        }
+            selectRegion('wetlands');
+        });
 
-        // --- Navigation Logic ---
-        function renderNav() {
-            const sections = ['Intro', 'Atlas', 'Factions', 'Pantheon', 'Hooks'];
-            const navContainer = document.getElementById('nav-container');
-            const mobileNavContainer = document.getElementById('mobile-nav-container');
-
-            sections.forEach(section => {
-                const link = document.createElement('a');
-                link.href = `#${section.toLowerCase()}`;
-                link.className = 'text-slate-300 hover:bg-slate-800 hover:text-amber-500 px-3 py-2 rounded-md text-sm font-bold uppercase tracking-wider transition';
-                link.innerText = section;
-                navContainer.appendChild(link);
-
-                const mobileLink = link.cloneNode(true);
-                mobileLink.className = 'text-slate-300 hover:bg-slate-900 hover:text-white block px-3 py-2 rounded-md text-base font-medium';
-                mobileNavContainer.appendChild(mobileLink);
+        function renderCharts() {
+             // Charts
+             const ctxTone = document.getElementById('toneChart').getContext('2d');
+            new Chart(ctxTone, {
+                type: 'radar',
+                data: {
+                    labels: ['High Fantasy', 'Political Intrigue', 'Wilderness Survival', 'Mystery/Lore', 'Combat'],
+                    datasets: [{
+                        label: 'Campaign Focus',
+                        data: [7, 9, 9, 6, 8], 
+                        fill: true,
+                        backgroundColor: 'rgba(217, 119, 6, 0.2)', // Amber
+                        borderColor: 'rgb(217, 119, 6)',
+                        pointBackgroundColor: 'rgb(217, 119, 6)',
+                        pointBorderColor: '#fff',
+                    }]
+                },
+                options: { maintainAspectRatio: false, scales: { r: { suggestedMin: 0, suggestedMax: 10, ticks: { display: false } } }, plugins: { legend: { display: false } } }
             });
 
-            // Mobile Menu Toggle
-            const btn = document.getElementById('mobile-menu-btn');
-            const menu = document.getElementById('mobile-menu');
-            btn.addEventListener('click', () => {
-                menu.classList.toggle('hidden');
+            const ctxFaction = document.getElementById('factionChart').getContext('2d');
+            new Chart(ctxFaction, {
+                type: 'bar',
+                data: {
+                    labels: ['Knights of Bell', 'Millder Family', 'Blackstone Clan', 'Dragonsbane Soc.', 'Serenity Grove', 'Oagonian Co.'],
+                    datasets: [
+                        { label: 'Military', data: [9, 3, 6, 7, 4, 3], backgroundColor: '#475569' },
+                        { label: 'Political', data: [6, 10, 5, 2, 2, 8], backgroundColor: '#d97706' },
+                        { label: 'Magical/Primal', data: [1, 3, 8, 4, 9, 2], backgroundColor: '#059669' }
+                    ]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    responsive: true,
+                    scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { display: false } } },
+                    plugins: { legend: { position: 'bottom' } }
+                }
             });
         }
-
-        // --- Render Functions ---
-
+    
+        // Helper render functions
         function renderFactions() {
             const container = document.getElementById('faction-list');
             container.innerHTML = loreData.factions.map((f, index) => `
@@ -558,7 +798,6 @@
                     <h3 class="text-xl font-bold mb-1 cinzel">${g.name}</h3>
                     <p class="text-xs uppercase tracking-wider font-semibold mb-4 opacity-75">${g.title}</p>
                     <p class="text-sm leading-relaxed mb-4">${g.desc}</p>
-
                     <div class="mt-auto pt-4 border-t border-opacity-25 border-white">
                         <div class="flex flex-wrap gap-1 mb-3">
                             ${g.domains.map(d => `<span class="px-2 py-0.5 bg-black bg-opacity-20 rounded text-xs border border-white border-opacity-20">${d}</span>`).join('')}
@@ -573,154 +812,6 @@
                 </div>
             `).join('');
         }
-
-        // --- Interaction Logic ---
-
-        function selectRegion(id) {
-            const data = loreData.regions[id];
-            if (!data) return;
-
-            // Visual update: highlight all cells matching the region ID
-            document.querySelectorAll('.map-cell').forEach(el => {
-                el.classList.remove('active');
-                if (el.dataset.region === id) {
-                    el.classList.add('active');
-                }
-            });
-
-            const contentContainer = document.getElementById('region-content');
-            contentContainer.innerHTML = `
-                <div class="animate-fade-in">
-                    <h3 class="text-2xl font-bold cinzel text-slate-900 mb-2">${data.title}</h3>
-                    <div class="w-12 h-1 bg-amber-500 mb-4"></div>
-                    <p class="text-slate-700 text-lg leading-relaxed mb-4">${data.content}</p>
-
-                    <button onclick="toggleDetails('region-extended')" class="inline-flex items-center px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-sm font-bold rounded transition">
-                        <span>🗺️ Surveyor's Notes</span>
-                    </button>
-                    <div id="region-extended" class="details-content mt-4 p-4 bg-amber-50 border border-amber-200 rounded text-slate-700">
-                        ${data.extended}
-                    </div>
-                </div>
-            `;
-        }
-
-        function showHook(id) {
-            const data = loreData.hooks[id];
-
-            document.querySelectorAll('.hook-btn').forEach(btn => {
-                if(btn.dataset.target === id) {
-                    btn.classList.add('bg-slate-600', 'border-amber-500');
-                    btn.classList.remove('border-transparent');
-                } else {
-                    btn.classList.remove('bg-slate-600', 'border-amber-500');
-                    btn.classList.add('border-transparent');
-                }
-            });
-
-            const display = document.getElementById('hook-display');
-            const tagsHtml = data.tags.map(tag => `<span class="inline-block bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide mr-2">${tag}</span>`).join('');
-
-            display.innerHTML = `
-                <div class="animate-slide-up">
-                    <h3 class="text-2xl font-bold text-slate-800 mb-3">${data.title}</h3>
-                    <p class="text-slate-700 mb-6 text-lg leading-relaxed font-serif italic">"${data.text}"</p>
-                    <div class="border-t border-slate-300 pt-4 mb-4">
-                        <p class="text-xs text-slate-500 font-bold mb-2">RECOMMENDED CLASSES</p>
-                        ${tagsHtml}
-                    </div>
-
-                    <button onclick="toggleDetails('hook-extended')" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline">
-                        + Reveal Character Advice
-                    </button>
-                    <div id="hook-extended" class="details-content mt-3 text-sm text-slate-600 bg-indigo-50 p-3 rounded border border-indigo-100">
-                        ${data.extended}
-                    </div>
-                </div>
-            `;
-        }
-
-        function toggleDetails(id) {
-            const el = document.getElementById(id);
-            if (el) {
-                el.classList.toggle('open');
-            }
-        }
-
-        // --- Chart Logic ---
-        function renderCharts() {
-            // Tone Radar Chart
-            const ctxTone = document.getElementById('toneChart').getContext('2d');
-            new Chart(ctxTone, {
-                type: 'radar',
-                data: {
-                    labels: ['High Fantasy', 'Political Intrigue', 'Wilderness Survival', 'Mystery/Lore', 'Combat'],
-                    datasets: [{
-                        label: 'Campaign Focus',
-                        data: [7, 9, 9, 6, 8],
-                        fill: true,
-                        backgroundColor: 'rgba(217, 119, 6, 0.2)', // Amber
-                        borderColor: 'rgb(217, 119, 6)',
-                        pointBackgroundColor: 'rgb(217, 119, 6)',
-                        pointBorderColor: '#fff',
-                        pointHoverBackgroundColor: '#fff',
-                        pointHoverBorderColor: 'rgb(217, 119, 6)'
-                    }]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    scales: {
-                        r: {
-                            angleLines: { color: '#cbd5e1' },
-                            grid: { color: '#e2e8f0' },
-                            pointLabels: {
-                                font: { size: 12, family: "'Cinzel', serif" },
-                                color: '#334155'
-                            },
-                            suggestedMin: 0,
-                            suggestedMax: 10,
-                            ticks: { display: false }
-                        }
-                    },
-                    plugins: { legend: { display: false } }
-                }
-            });
-
-            // Faction Influence Bar Chart
-            const ctxFaction = document.getElementById('factionChart').getContext('2d');
-            new Chart(ctxFaction, {
-                type: 'bar',
-                data: {
-                    labels: ['Knights of Bell', 'Millder Family', 'Blackstone Clan', 'Dragonsbane Soc.', 'Serenity Grove', 'Oagonian Co.'],
-                    datasets: [
-                        { label: 'Military', data: [9, 3, 6, 7, 4, 3], backgroundColor: '#475569' },
-                        { label: 'Political', data: [6, 10, 5, 2, 2, 8], backgroundColor: '#d97706' },
-                        { label: 'Magical/Primal', data: [1, 3, 8, 4, 9, 2], backgroundColor: '#059669' }
-                    ]
-                },
-                options: {
-                    maintainAspectRatio: false,
-                    responsive: true,
-                    scales: {
-                        x: { stacked: true, grid: { display: false } },
-                        y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { display: false } }
-                    },
-                    plugins: {
-                        legend: { position: 'bottom' },
-                        tooltip: {
-                            callbacks: {
-                                title: (items) => items[0].label,
-                                label: function(context) { return context.dataset.label + ': ' + context.raw + '/10'; }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Start
-        document.addEventListener('DOMContentLoaded', initApp);
-
     </script>
 </body>
 </html>
