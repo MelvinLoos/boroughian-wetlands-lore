@@ -1,0 +1,726 @@
+<!-- Chosen Palette: Swamp & Steel (Deep Moss Green, Slate Grey, Rust Orange, Misty White) -->
+<!-- Application Structure Plan:
+    1. **Hero Section**: Immersive intro with Tone Radar Chart.
+    2. **Strategic Dashboard (The Atlas)**: Grid-based map. Clicking a region now shows a summary AND a "Read More" toggle for deep lore (Ley-lines, political history, specific province layouts).
+    3. **Faction Intel**: Dynamically generated list. Each faction card has an "Intelligence Report" toggle revealing specific agendas. UPDATED: Removed Ughuan Horde reference.
+    4. **Theology & Domains**: Dynamically generated cards. "Divine Knowledge" toggle reveals worship details. (Maelec=Electricity, Tebus=Science, Thanatos=War).
+    5. **Character Origins**: Hook selector with expanded roleplay tips hidden behind a toggle.
+-->
+<!-- Visualization & Content Choices:
+    - **Tone Analysis (Radar Chart)**: Visualizes campaign themes.
+    - **Faction Power Dynamics (Bar Chart)**: Visualizes Military vs Political vs Magical strength.
+    - **Schematic Map**: CSS Grid representing the world.
+    - **Interaction**: Extensive use of JS to inject content and toggle visibility of "extended" description blocks.
+-->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boroughian Wetlands: Player Primer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Lato:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: #f0f4f1; /* Light mist color */
+            color: #1a2e1a; /* Dark swamp green */
+        }
+
+        h1, h2, h3, .cinzel {
+            font-family: 'Cinzel', serif;
+        }
+
+        /* Responsive Chart Container */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* Base height */
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #e2e8f0;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+
+        /* Map Grid Styling */
+        .map-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 0.5rem;
+            aspect-ratio: 1 / 1;
+        }
+
+        .map-cell {
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 0.25rem;
+            border: 2px solid transparent;
+            font-size: 0.75rem;
+            line-height: 1.1;
+        }
+        @media (min-width: 640px) {
+            .map-cell {
+                padding: 0.5rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        .map-cell:hover {
+            transform: scale(1.02);
+            z-index: 10;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .map-cell.active {
+            border-color: #d97706; /* Amber-600 */
+            box-shadow: inset 0 0 10px rgba(217, 119, 6, 0.2);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-slide-up {
+            animation: slideUp 0.4s ease-out;
+        }
+
+        /* Toggle styles */
+        .details-content {
+            display: none;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .details-content.open {
+            display: block;
+            animation: slideUp 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen bg-stone-100 text-slate-800">
+
+    <!-- Navigation -->
+    <nav class="bg-slate-900 text-slate-100 sticky top-0 z-50 shadow-lg border-b-4 border-amber-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex-shrink-0 flex items-center">
+                    <span class="text-2xl mr-2">🛡️</span>
+                    <span class="cinzel text-xl font-bold tracking-widest text-amber-500">VITAE: WETLANDS</span>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-10 flex items-baseline space-x-4" id="nav-container">
+                        <!-- Links populated by JS -->
+                    </div>
+                </div>
+                <div class="-mr-2 flex md:hidden">
+                    <button type="button" class="inline-flex items-center justify-center p-2 rounded-md text-slate-400 hover:text-white hover:bg-slate-700 focus:outline-none" aria-controls="mobile-menu" aria-expanded="false" id="mobile-menu-btn">
+                        <span class="sr-only">Open main menu</span>
+                        <span class="text-2xl">☰</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="md:hidden hidden" id="mobile-menu">
+            <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-slate-800" id="mobile-nav-container">
+                <!-- Mobile Links populated by JS -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-8 space-y-16">
+
+        <!-- Intro Section -->
+        <section id="intro" class="grid lg:grid-cols-2 gap-12 items-center animate-fade-in">
+            <div class="space-y-6">
+                <div class="inline-block px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold uppercase tracking-wide rounded-full mb-2">Campaign Primer</div>
+                <h1 class="text-4xl md:text-5xl font-bold text-slate-900 cinzel">The Boroughian Wetlands</h1>
+                <blockquote class="text-xl italic text-slate-600 border-l-4 border-amber-600 pl-4 py-2 bg-white shadow-sm">
+                    “The mist here doesn't just obscure your vision; it seeps into your history, rusting your armor and rotting your secrets.”
+                </blockquote>
+                <p class="text-lg text-slate-700 leading-relaxed">
+                    A province of <strong>Vitae</strong> defined by mist, swamps, and rain-slicked cobblestones. Here, civilization fights a constant battle against the encroaching rot of the wild and the memory of ancient magic.
+                </p>
+                <div class="grid grid-cols-2 gap-4 mt-6">
+                    <div class="p-4 bg-slate-200 rounded border border-slate-300 text-center">
+                        <div class="text-2xl mb-1">🏰</div>
+                        <div class="font-bold text-slate-800">Political Intrigue</div>
+                    </div>
+                    <div class="p-4 bg-slate-200 rounded border border-slate-300 text-center">
+                        <div class="text-2xl mb-1">🌲</div>
+                        <div class="font-bold text-slate-800">Survival</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tone Chart -->
+            <div class="bg-white p-6 rounded-lg shadow-md border border-slate-200">
+                <h3 class="text-lg font-bold text-slate-800 mb-4 border-b pb-2 text-center cinzel">Campaign Themes</h3>
+                <div class="chart-container">
+                    <canvas id="toneChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- The Atlas (Interactive Map) -->
+        <section id="atlas" class="scroll-mt-24">
+            <div class="bg-white rounded-xl p-6 lg:p-8 shadow-xl border border-slate-300 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-emerald-800 to-slate-900"></div>
+                <div class="mb-8 text-center max-w-2xl mx-auto">
+                    <h2 class="text-3xl font-bold text-slate-900 cinzel">The Regional Atlas</h2>
+                    <p class="text-slate-600 mt-2">The Wetlands are surrounded by powerful neighbors. Click the map zones below to gather intelligence on the region.</p>
+                </div>
+
+                <div class="flex flex-col lg:flex-row gap-8 items-stretch">
+                    <!-- Map Grid -->
+                    <div class="w-full lg:w-5/12 aspect-square max-w-md mx-auto flex-shrink-0">
+                        <div class="map-grid h-full w-full bg-slate-300 p-2 rounded-lg border-4 border-slate-500 shadow-inner">
+                            <!-- Row 1 -->
+                            <div class="map-cell bg-indigo-100 text-indigo-900 hover:bg-indigo-200" data-region="otc" onclick="selectRegion('otc')">
+                                <span class="text-lg mb-1">⚖️</span>
+                                <strong>Oagonian<br>Trade Co.</strong>
+                            </div>
+                            <div class="map-cell bg-purple-100 text-purple-900 hover:bg-purple-200 border-b-4 border-purple-400" data-region="magocracy" onclick="selectRegion('magocracy')">
+                                <span class="text-lg mb-1">🔮</span>
+                                <strong>Stormian<br>Magocracy</strong>
+                            </div>
+                            <div class="map-cell bg-stone-200 text-stone-900 hover:bg-stone-300 border-l-4 border-stone-400" data-region="dalneymia" onclick="selectRegion('dalneymia')">
+                                <span class="text-lg mb-1">⚒️</span>
+                                <strong>Dalneymia</strong>
+                            </div>
+
+                            <!-- Row 2 -->
+                            <div class="map-cell bg-blue-100 text-blue-900 hover:bg-blue-200" data-region="ocean" onclick="selectRegion('ocean')">
+                                <span class="text-lg mb-1">🌊</span>
+                                <strong>Ocean</strong>
+                            </div>
+                            <div class="map-cell bg-emerald-700 text-emerald-50 hover:bg-emerald-600 border-4 double border-amber-400 shadow-lg transform scale-105 z-10" data-region="wetlands" onclick="selectRegion('wetlands')">
+                                <span class="text-xl mb-1">⚜️</span>
+                                <strong>THE<br>WETLANDS</strong>
+                            </div>
+                            <div class="map-cell bg-yellow-100 text-yellow-900 hover:bg-yellow-200" data-region="velumia" onclick="selectRegion('velumia')">
+                                <span class="text-lg mb-1">🏛️</span>
+                                <strong>Velumia</strong>
+                            </div>
+
+                            <!-- Row 3 -->
+                            <div class="map-cell bg-blue-200 text-blue-900 hover:bg-blue-300" data-region="ocean" onclick="selectRegion('ocean')">
+                                <span class="text-lg mb-1">🌊</span>
+                                <strong>Ocean</strong>
+                            </div>
+                            <div class="map-cell bg-blue-200 text-blue-900 hover:bg-blue-300" data-region="ocean" onclick="selectRegion('ocean')">
+                                <span class="text-lg mb-1">🌊</span>
+                                <strong>Ocean</strong>
+                            </div>
+                            <div class="map-cell bg-gray-200 text-gray-400 cursor-not-allowed opacity-50">
+                                <span>Uncharted</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Region Details Panel -->
+                    <div class="w-full lg:w-7/12 bg-slate-50 p-6 rounded-lg border-l-4 border-amber-600 shadow-sm flex flex-col">
+                        <div id="region-content" class="h-full flex flex-col justify-center animate-fade-in">
+                            <!-- Populated by JS -->
+                            <h3 class="text-2xl font-bold cinzel text-slate-900 mb-4 border-b pb-2">Geopolitical Intel</h3>
+                            <p class="text-slate-600 mb-6 italic">Select a region on the map grid to read the surveyor's notes.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Factions & Politics -->
+        <section id="factions" class="scroll-mt-24">
+            <h2 class="text-3xl font-bold text-slate-900 cinzel mb-6 text-center">Factions & Orders</h2>
+            <p class="text-center text-slate-600 max-w-2xl mx-auto mb-10">Allegiances in the Wetlands are as shifting as the ground beneath your feet. Knowing who holds the sword, the coin, or the spell is vital.</p>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+                <!-- Interactive List -->
+                <div id="faction-list" class="space-y-4">
+                    <!-- Populated by JS -->
+                </div>
+
+                <!-- Faction Influence Chart -->
+                <div class="bg-white p-6 rounded-lg shadow-md border border-slate-200 flex flex-col">
+                    <h3 class="text-lg font-bold text-slate-800 mb-2 text-center cinzel">Estimated Power Projection</h3>
+                    <p class="text-xs text-slate-500 text-center mb-6">Comparative analysis of Military, Political, and Magical assets.</p>
+                    <div class="chart-container flex-grow">
+                        <canvas id="factionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pantheon -->
+        <section id="pantheon" class="scroll-mt-24">
+            <h2 class="text-3xl font-bold text-slate-900 cinzel mb-8 text-center">The Divine Pantheon</h2>
+            <div id="pantheon-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Populated by JS -->
+            </div>
+        </section>
+
+        <!-- Character Hooks -->
+        <section id="hooks" class="scroll-mt-24 mb-12">
+            <div class="bg-slate-800 rounded-xl shadow-2xl overflow-hidden border border-slate-700">
+                <div class="bg-slate-900 p-8 text-center border-b border-slate-700">
+                    <h2 class="text-3xl font-bold cinzel text-amber-500">Character Origins</h2>
+                    <p class="text-slate-400 mt-2">Connect your class to the world. Select an archetype to reveal your potential backstory.</p>
+                </div>
+
+                <div class="p-6 lg:p-10 flex flex-col md:flex-row gap-8">
+                    <!-- Sidebar Controls -->
+                    <div class="w-full md:w-1/3 flex flex-col gap-3">
+                        <button onclick="showHook('survivor')" class="hook-btn active text-left px-5 py-4 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition border-l-4 border-transparent hover:border-amber-500 focus:outline-none" data-target="survivor">
+                            <span class="block font-bold text-lg">The Survivor</span>
+                            <span class="text-xs text-slate-400">Ranger, Rogue, Barbarian</span>
+                        </button>
+                        <button onclick="showHook('exile')" class="hook-btn text-left px-5 py-4 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition border-l-4 border-transparent hover:border-purple-500 focus:outline-none" data-target="exile">
+                            <span class="block font-bold text-lg">The Exile</span>
+                            <span class="text-xs text-slate-400">Wizard, Alchemist, Investigator</span>
+                        </button>
+                        <button onclick="showHook('shield')" class="hook-btn text-left px-5 py-4 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition border-l-4 border-transparent hover:border-blue-500 focus:outline-none" data-target="shield">
+                            <span class="block font-bold text-lg">The Faithful Shield</span>
+                            <span class="text-xs text-slate-400">Champion, Fighter</span>
+                        </button>
+                        <button onclick="showHook('speaker')" class="hook-btn text-left px-5 py-4 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition border-l-4 border-transparent hover:border-emerald-500 focus:outline-none" data-target="speaker">
+                            <span class="block font-bold text-lg">Speaker for Trees</span>
+                            <span class="text-xs text-slate-400">Druid, Sorcerer, Monk</span>
+                        </button>
+                    </div>
+
+                    <!-- Content Display -->
+                    <div class="w-full md:w-2/3 bg-slate-100 rounded-lg p-8 border border-slate-300 relative min-h-[250px] flex items-center">
+                        <div id="hook-display" class="w-full">
+                            <!-- Populated by JS on load -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-slate-900 text-slate-400 py-10 border-t border-slate-800">
+        <div class="container mx-auto px-4 text-center">
+            <p class="cinzel font-bold text-xl text-slate-200 mb-2">Campaign: Boroughian Wetlands</p>
+            <p class="text-sm mb-4">Starting Location: <span class="text-amber-500 font-bold">Ormskirk</span></p>
+            <div class="w-16 h-1 bg-amber-700 mx-auto rounded mb-4"></div>
+            <p class="text-xs text-slate-600">Generated for Pathfinder 2e | Vitae Campaign</p>
+        </div>
+    </footer>
+
+    <script>
+        // --- Data & State ---
+        const loreData = {
+            regions: {
+                'wetlands': {
+                    title: "The Boroughian Wetlands",
+                    content: "<strong>Your Location.</strong> A land defined by water and mist. Internally, the region is divided into five provinces. The landscape is treacherous, and the political landscape even more so.",
+                    extended: "<strong>Province Layout:</strong> From West to East, the provinces are <em>Stagcoast</em> (ruled by Druids), <em>Ghostmouth</em> (dangerous frontier), <em>Bellgulf</em> (military heart), and <em>Millder</em> (political center). The Dwarven province of <em>Blackia</em> lies to the North, overlooking Bellgulf and Millder.<br><br><strong>Hazards:</strong> Beyond monsters, the environment kills. Drowning in sudden bogs and contracting rot-diseases are constant threats."
+                },
+                'magocracy': {
+                    title: "Stormian Magocracy",
+                    content: "<strong>To the North.</strong> A land ruled by arcanists and scholars who built their capital high in the mountains to tap into ley-lines. Magic is not just an art here; it is the law.",
+                    extended: "<strong>Arcane Dominance:</strong> The capital was founded specifically on a convergence of ley-lines to empower rituals. They view the Wetlands as a chaotic, untamed place that needs to be brought to heel. Further north of them lies the Kingdom of <em>Pentefia</em> and the Republic of <em>Zilukkhur</em>."
+                },
+                'dalneymia': {
+                    title: "Dalneymia",
+                    content: "<strong>To the North East.</strong> A classical Dwarven empire bound by strict tradition. A solid ally, but slow to change and deeply conservative.",
+                    extended: "<strong>The Schism:</strong> The <em>Blackstone Clan</em> of the Wetlands broke away from Dalneymia to forge a new path, rejecting the rigid caste systems and traditions of the motherland in favor of a meritocratic, inclusive society."
+                },
+                'otc': {
+                    title: "Oagonian Trade Co.",
+                    content: "<strong>To the North West.</strong> Territory controlled by the Oagonian Trade Company, a mercantile powerhouse that dominates river trade. If it floats on the water, they take a cut.",
+                    extended: "<strong>Mercantile Grip:</strong> They are ruthless in their monopoly. While not openly hostile, they wield economic pressure like a weapon, often hiring mercenaries to enforce 'toll' collection on the river networks."
+                },
+                'velumia': {
+                    title: "Republic of Velumia",
+                    content: "<strong>To the East.</strong> A neighboring republic. Trade flows between Velumia and the Wetlands, though the swamps make travel treacherous and expensive.",
+                    extended: "<strong>Civilized Neighbors:</strong> Velumia represents standard 'civilization' to the East. They are often baffled by the internal politics of the Wetlands but rely on its resources."
+                },
+                'ocean': {
+                    title: "The Vast Ocean",
+                    content: "<strong>To the South and West.</strong> The Wetlands drain into this massive body of water. Pirates, storms, and deep-sea monstrosities lurk beyond the coast.",
+                    extended: "<strong>The Unknown:</strong> Few venture far into the open ocean. Tales of leviathans and ghost ships are common in coastal taverns like the <em>Bell and Beak</em>."
+                }
+            },
+            factions: [
+                {
+                    name: "Knights of Bell",
+                    icon: "⚔️",
+                    desc: "The iron fist of Bellgulf. Heavily armored, disciplined, and militaristic. Order above all.",
+                    border: "border-slate-700",
+                    hoverColor: "group-hover:text-amber-700",
+                    extended: "<strong>Military Doctrine:</strong> They do not care for art or politics; they care about walls, steel, and discipline. They are the primary defense against monster incursions and maintain constant readiness for any threat that might emerge from the wild or neighboring powers."
+                },
+                {
+                    name: "The Millder Family",
+                    icon: "📜",
+                    desc: "Diplomats and architects of peace. They united the factions into a ruling council.",
+                    border: "border-amber-500",
+                    hoverColor: "group-hover:text-amber-700",
+                    extended: "<strong>The Council:</strong> The Millder family are the political glue of the Wetlands. Without their 'Council,' the factions would likely be at war with each other rather than coordinating defenses against external threats."
+                },
+                {
+                    name: "Blackstone Clan",
+                    icon: "🌑",
+                    desc: "Progressive dwarves of Blackia. Worshippers of Lunastus. Inclusive and welcoming.",
+                    border: "border-emerald-600",
+                    hoverColor: "group-hover:text-amber-700",
+                    extended: "<strong>A New Path:</strong> Founded by dwarves splitting from Dalneymia, they rejected strict tradition. They welcome <em>any</em> race willing to contribute. They discovered ancient ruins of Lunastus in their territory and embraced the deity's domains of progress and discovery."
+                },
+                {
+                    name: "Dragonsbane Society",
+                    icon: "🩸",
+                    desc: "A successful but dangerous faction. Deeply racist fanatics who purge anything draconic.",
+                    border: "border-red-700",
+                    hoverColor: "group-hover:text-amber-700",
+                    extended: "<strong>Indiscriminate Hate:</strong> They do not differentiate between a rampaging red dragon and a benevolent metallic dragon, or even a kobold shopkeeper. To them, draconic blood is a corruption that must be completely excised."
+                },
+                {
+                    name: "Serenity Grove",
+                    icon: "🌿",
+                    desc: "Druids ruling Stagcoast (West). Suspicious of cities. Guardians of the swamp.",
+                    border: "border-green-700",
+                    hoverColor: "group-hover:text-amber-700",
+                    extended: "<strong>Nature's Wrath:</strong> While they cooperate with the Council, tensions are high. They view the expansion of stone cities like Ormskirk as an affront to the natural order of the Wetlands."
+                }
+            ],
+            gods: [
+                {
+                    name: "Lunastus",
+                    title: "The Rediscovered",
+                    desc: "A forgotten god of night and magic, found in ancient ruins by the Blackstone Clan. Influence is rapidly growing.",
+                    domains: ["Personal Growth", "Redemption", "Discovery", "Progress"],
+                    style: "bg-indigo-950 text-indigo-50 border-indigo-400",
+                    accent: "indigo",
+                    extended: "<strong>The Awakening:</strong> Lunastus was lost to time until the Blackstone Clan unearthed their temples. Now, their worship is spreading fast among those seeking a second chance or new knowledge. They represent the light found within the dark."
+                },
+                {
+                    name: "Maelec",
+                    title: "The Conducter",
+                    desc: "God of electricity and gears. His worship is centered in the Stormian Magocracy, driving their magical-industrial advancements.",
+                    domains: ["Electricity", "Gears"],
+                    style: "bg-purple-100 text-purple-900 border-purple-300",
+                    accent: "purple",
+                    extended: "<strong>The Machine God:</strong> Maelec represents the fusion of magic and technology. His temples often hum with energy and the ticking of clockwork, though his worship is less common in the rural Wetlands."
+                },
+                {
+                    name: "Tebus",
+                    title: "The Sage",
+                    desc: "The god of Science and Knowledge. Worshipped by scholars, alchemists, and those who seek to understand the world.",
+                    domains: ["Science", "Knowledge"],
+                    style: "bg-amber-100 text-amber-900 border-amber-200",
+                    accent: "amber",
+                    extended: "<strong>The Pursuit of Truth:</strong> Tebus values discovery, logic, and the written word. Universities and libraries are his temples, and experiments are his prayers."
+                },
+                {
+                    name: "Thanatos",
+                    title: "The Warlord",
+                    desc: "The god of War and Mortality. He represents the brutal reality of conflict and the death that follows.",
+                    domains: ["War", "Mortality"],
+                    style: "bg-red-950 text-red-50 border-red-700",
+                    accent: "red",
+                    extended: "<strong>Battle's End:</strong> Thanatos is not just the fight, but the inevitable end of every soldier. He is respected by warriors who understand that all wars end in death."
+                }
+            ],
+            hooks: {
+                'survivor': {
+                    title: "The Survivor",
+                    text: "You grew up in the rough settlements of <strong>Bash</strong> or near the <strong>Ghostmouth</strong> frontier. You learned to fend off shock lizards with a spear and navigate the treacherous mire before you could walk. While others see the swamp as a threat, you see it as a home.",
+                    extended: "<strong>Roleplay Tip:</strong> You likely distrust people from the 'clean' cities like Bellgulf. You know the difference between safe mud and sinking mud. Consider taking feats related to terrain navigation.",
+                    tags: ["Ranger", "Rogue", "Barbarian"]
+                },
+                'exile': {
+                    title: "The Magocracy Exile",
+                    text: "You studied in <strong>Nitali</strong> within the neighboring <em>Stormian Magocracy</em>. But you left the mountain spires for the mud. Was it a failed experiment? Did you learn a forbidden truth? Or did you simply chafe under their strict academic dogmas?",
+                    extended: "<strong>Roleplay Tip:</strong> You might be arrogant about your magical education, or perhaps you are hiding from your former masters. The Magocracy has spies everywhere.",
+                    tags: ["Wizard", "Alchemist", "Investigator"]
+                },
+                'shield': {
+                    title: "The Faithful Shield",
+                    text: "You have pledged your sword to the <strong>Knights of Bell</strong> to uphold order in a chaotic land, or perhaps you serve the <strong>Blackstone Clan</strong>, sworn to protect their inclusive society and the newly found temples of <em>Lunastus</em>.",
+                    extended: "<strong>Roleplay Tip:</strong> If you serve Bell, you value hierarchy. If you serve Blackstone, you value potential. These two philosophies often clash.",
+                    tags: ["Champion", "Fighter"]
+                },
+                'speaker': {
+                    title: "The Speaker for the Trees",
+                    text: "You are an initiate of the <strong>Order of the Serenity Grove</strong> in <em>Stagcoast</em>. You know that the expanding cities like <em>Ormskirk</em> are an intrusion. You are tasked with maintaining the delicate, violent balance between the settlements and the wild spirits of the <strong>Sutwood</strong>.",
+                    extended: "<strong>Roleplay Tip:</strong> You are the voice of the wild. When the party wants to kill a beast, you might ask *why* it attacked. Is civilization the aggressor here?",
+                    tags: ["Druid", "Sorcerer", "Monk"]
+                }
+            }
+        };
+
+        // --- Init Logic ---
+        function initApp() {
+            renderNav();
+            renderFactions();
+            renderPantheon();
+            renderCharts();
+            showHook('survivor');
+            selectRegion('wetlands'); // Default open
+        }
+
+        // --- Navigation Logic ---
+        function renderNav() {
+            const sections = ['Intro', 'Atlas', 'Factions', 'Pantheon', 'Hooks'];
+            const navContainer = document.getElementById('nav-container');
+            const mobileNavContainer = document.getElementById('mobile-nav-container');
+
+            sections.forEach(section => {
+                const link = document.createElement('a');
+                link.href = `#${section.toLowerCase()}`;
+                link.className = 'text-slate-300 hover:bg-slate-800 hover:text-amber-500 px-3 py-2 rounded-md text-sm font-bold uppercase tracking-wider transition';
+                link.innerText = section;
+                navContainer.appendChild(link);
+
+                const mobileLink = link.cloneNode(true);
+                mobileLink.className = 'text-slate-300 hover:bg-slate-900 hover:text-white block px-3 py-2 rounded-md text-base font-medium';
+                mobileNavContainer.appendChild(mobileLink);
+            });
+
+            // Mobile Menu Toggle
+            const btn = document.getElementById('mobile-menu-btn');
+            const menu = document.getElementById('mobile-menu');
+            btn.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+        }
+
+        // --- Render Functions ---
+
+        function renderFactions() {
+            const container = document.getElementById('faction-list');
+            container.innerHTML = loreData.factions.map((f, index) => `
+                <div class="faction-card group bg-white p-4 rounded shadow hover:shadow-md transition border-l-4 ${f.border}">
+                    <div class="flex justify-between items-center cursor-pointer" onclick="toggleDetails('fact-${index}')">
+                        <h3 class="font-bold text-lg text-slate-900 ${f.hoverColor} transition">${f.name}</h3>
+                        <span class="text-xl">${f.icon}</span>
+                    </div>
+                    <p class="text-sm text-slate-600 mt-1">${f.desc}</p>
+                    <div class="mt-3">
+                        <button onclick="toggleDetails('fact-${index}')" class="text-xs font-bold text-amber-600 hover:text-amber-800 flex items-center gap-1 focus:outline-none">
+                            <span>🔍 Intelligence Report</span>
+                        </button>
+                        <div id="fact-${index}" class="details-content mt-2 pt-2 border-t border-slate-100 text-sm text-slate-700 bg-slate-50 p-2 rounded">
+                            ${f.extended}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderPantheon() {
+            const container = document.getElementById('pantheon-grid');
+            container.innerHTML = loreData.gods.map((g, index) => `
+                <div class="${g.style} rounded-xl p-6 shadow-lg transform hover:-translate-y-2 transition duration-300 border-2 relative overflow-hidden group flex flex-col">
+                    <h3 class="text-xl font-bold mb-1 cinzel">${g.name}</h3>
+                    <p class="text-xs uppercase tracking-wider font-semibold mb-4 opacity-75">${g.title}</p>
+                    <p class="text-sm leading-relaxed mb-4">${g.desc}</p>
+
+                    <div class="mt-auto pt-4 border-t border-opacity-25 border-white">
+                        <div class="flex flex-wrap gap-1 mb-3">
+                            ${g.domains.map(d => `<span class="px-2 py-0.5 bg-black bg-opacity-20 rounded text-xs border border-white border-opacity-20">${d}</span>`).join('')}
+                        </div>
+                        <button onclick="toggleDetails('god-${index}')" class="w-full text-center text-xs font-bold uppercase tracking-wide py-2 bg-black bg-opacity-20 hover:bg-opacity-30 rounded transition">
+                            Divine Knowledge
+                        </button>
+                        <div id="god-${index}" class="details-content mt-2 text-xs leading-relaxed opacity-90 p-2 bg-black bg-opacity-20 rounded">
+                            ${g.extended}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // --- Interaction Logic ---
+
+        function selectRegion(id) {
+            const data = loreData.regions[id];
+            if (!data) return;
+
+            // Visual update: highlight all cells matching the region ID
+            document.querySelectorAll('.map-cell').forEach(el => {
+                el.classList.remove('active');
+                if (el.dataset.region === id) {
+                    el.classList.add('active');
+                }
+            });
+
+            const contentContainer = document.getElementById('region-content');
+            contentContainer.innerHTML = `
+                <div class="animate-fade-in">
+                    <h3 class="text-2xl font-bold cinzel text-slate-900 mb-2">${data.title}</h3>
+                    <div class="w-12 h-1 bg-amber-500 mb-4"></div>
+                    <p class="text-slate-700 text-lg leading-relaxed mb-4">${data.content}</p>
+
+                    <button onclick="toggleDetails('region-extended')" class="inline-flex items-center px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-sm font-bold rounded transition">
+                        <span>🗺️ Surveyor's Notes</span>
+                    </button>
+                    <div id="region-extended" class="details-content mt-4 p-4 bg-amber-50 border border-amber-200 rounded text-slate-700">
+                        ${data.extended}
+                    </div>
+                </div>
+            `;
+        }
+
+        function showHook(id) {
+            const data = loreData.hooks[id];
+
+            document.querySelectorAll('.hook-btn').forEach(btn => {
+                if(btn.dataset.target === id) {
+                    btn.classList.add('bg-slate-600', 'border-amber-500');
+                    btn.classList.remove('border-transparent');
+                } else {
+                    btn.classList.remove('bg-slate-600', 'border-amber-500');
+                    btn.classList.add('border-transparent');
+                }
+            });
+
+            const display = document.getElementById('hook-display');
+            const tagsHtml = data.tags.map(tag => `<span class="inline-block bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide mr-2">${tag}</span>`).join('');
+
+            display.innerHTML = `
+                <div class="animate-slide-up">
+                    <h3 class="text-2xl font-bold text-slate-800 mb-3">${data.title}</h3>
+                    <p class="text-slate-700 mb-6 text-lg leading-relaxed font-serif italic">"${data.text}"</p>
+                    <div class="border-t border-slate-300 pt-4 mb-4">
+                        <p class="text-xs text-slate-500 font-bold mb-2">RECOMMENDED CLASSES</p>
+                        ${tagsHtml}
+                    </div>
+
+                    <button onclick="toggleDetails('hook-extended')" class="text-sm font-bold text-indigo-600 hover:text-indigo-800 underline">
+                        + Reveal Character Advice
+                    </button>
+                    <div id="hook-extended" class="details-content mt-3 text-sm text-slate-600 bg-indigo-50 p-3 rounded border border-indigo-100">
+                        ${data.extended}
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleDetails(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.toggle('open');
+            }
+        }
+
+        // --- Chart Logic ---
+        function renderCharts() {
+            // Tone Radar Chart
+            const ctxTone = document.getElementById('toneChart').getContext('2d');
+            new Chart(ctxTone, {
+                type: 'radar',
+                data: {
+                    labels: ['High Fantasy', 'Political Intrigue', 'Wilderness Survival', 'Mystery/Lore', 'Combat'],
+                    datasets: [{
+                        label: 'Campaign Focus',
+                        data: [7, 9, 9, 6, 8],
+                        fill: true,
+                        backgroundColor: 'rgba(217, 119, 6, 0.2)', // Amber
+                        borderColor: 'rgb(217, 119, 6)',
+                        pointBackgroundColor: 'rgb(217, 119, 6)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(217, 119, 6)'
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: '#cbd5e1' },
+                            grid: { color: '#e2e8f0' },
+                            pointLabels: {
+                                font: { size: 12, family: "'Cinzel', serif" },
+                                color: '#334155'
+                            },
+                            suggestedMin: 0,
+                            suggestedMax: 10,
+                            ticks: { display: false }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Faction Influence Bar Chart
+            const ctxFaction = document.getElementById('factionChart').getContext('2d');
+            new Chart(ctxFaction, {
+                type: 'bar',
+                data: {
+                    labels: ['Knights of Bell', 'Millder Family', 'Blackstone Clan', 'Dragonsbane Soc.', 'Serenity Grove', 'Oagonian Co.'],
+                    datasets: [
+                        { label: 'Military', data: [9, 3, 6, 7, 4, 3], backgroundColor: '#475569' },
+                        { label: 'Political', data: [6, 10, 5, 2, 2, 8], backgroundColor: '#d97706' },
+                        { label: 'Magical/Primal', data: [1, 3, 8, 4, 9, 2], backgroundColor: '#059669' }
+                    ]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    responsive: true,
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { display: false } }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => items[0].label,
+                                label: function(context) { return context.dataset.label + ': ' + context.raw + '/10'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Start
+        document.addEventListener('DOMContentLoaded', initApp);
+
+    </script>
+</body>
+</html>
